@@ -5,11 +5,10 @@ const router = express.Router();
 
 // Simulación de base de datos en memoria
 let users = [
-  // Usuario de prueba precargado
   {
     id: 1,
     email: 'admin@example.com',
-    password: '$2a$10$YourHashedPasswordHere', // Se hashea en el registro
+    password: '$2a$10$YourHashedPasswordHere',
     name: 'Administrador',
     role: 'admin',
     createdAt: new Date('2024-01-01')
@@ -24,32 +23,24 @@ router.post('/register', async (req, res) => {
 
     // Validación
     if (!email || !password || !name) {
-      return res.status(400).json({ 
-        error: 'Todos los campos son obligatorios' 
-      });
+      return res.status(400).json({ error: 'Todos los campos son obligatorios' });
     }
 
     // Validar formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({ 
-        error: 'Formato de email inválido' 
-      });
+      return res.status(400).json({ error: 'Formato de email inválido' });
     }
 
     // Validar longitud de contraseña
     if (password.length < 6) {
-      return res.status(400).json({ 
-        error: 'La contraseña debe tener al menos 6 caracteres' 
-      });
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
     // Verificar si el usuario ya existe
     const existingUser = users.find(u => u.email === email);
     if (existingUser) {
-      return res.status(400).json({ 
-        error: 'El email ya está registrado' 
-      });
+      return res.status(400).json({ error: 'El email ya está registrado' });
     }
 
     // Hash de la contraseña
@@ -69,23 +60,28 @@ router.post('/register', async (req, res) => {
 
     // Generar token
     const token = jwt.sign(
-      { 
-        userId: newUser.id, 
-        email: newUser.email,
-        role: newUser.role 
-      },
+      { userId: newUser.id, email: newUser.email, role: newUser.role },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
+
+    // --- CAMBIO 1: Establecer Cookie ---
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 24 horas
+    });
 
     // No enviar la contraseña al cliente
     const { password: _, ...userWithoutPassword } = newUser;
 
     console.log(`✅ Usuario registrado: ${email}`);
 
+    // --- CAMBIO 2: Respuesta JSON sin token ---
     res.status(201).json({
       message: 'Usuario registrado exitosamente',
-      token,
+      // token, <--- ELIMINADO
       user: userWithoutPassword
     });
   } catch (error) {
@@ -99,54 +95,54 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validación
     if (!email || !password) {
-      return res.status(400).json({ 
-        error: 'Email y contraseña son obligatorios' 
-      });
+      return res.status(400).json({ error: 'Email y contraseña son obligatorios' });
     }
 
-    // Buscar usuario
     const user = users.find(u => u.email === email);
     if (!user) {
-      return res.status(401).json({ 
-        error: 'Credenciales inválidas' 
-      });
+      return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    // Verificar contraseña
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ 
-        error: 'Credenciales inválidas' 
-      });
+      return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    // Generar token
     const token = jwt.sign(
-      { 
-        userId: user.id, 
-        email: user.email, 
-        role: user.role 
-      },
+      { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    // No enviar la contraseña al cliente
+    // --- CAMBIO 3: Establecer Cookie en Login ---
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000
+    });
+
     const { password: _, ...userWithoutPassword } = user;
 
     console.log(`✅ Login exitoso: ${email}`);
 
+    // --- CAMBIO 4: Respuesta JSON sin token ---
     res.json({
       message: 'Login exitoso',
-      token,
+      // token, <--- ELIMINADO
       user: userWithoutPassword
     });
   } catch (error) {
     console.error('Error en login:', error);
     res.status(500).json({ error: 'Error en el servidor' });
   }
+});
+
+// --- CAMBIO 5: Nueva ruta de Logout ---
+router.post('/logout', (req, res) => {
+  res.clearCookie('token');
+  res.json({ message: 'Sesión cerrada exitosamente' });
 });
 
 // GET /api/auth/me - Obtener usuario actual
@@ -169,10 +165,12 @@ router.get('/users', (req, res) => {
   res.json(usersWithoutPasswords);
 });
 
-// Middleware de autenticación
+// Middleware de autenticación (LOCAL PARA ESTE ARCHIVO)
+// Nota: Si usas el middleware de server.js, podrías borrar este, 
+// pero es mejor actualizarlo aquí también por si acaso.
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  // --- CAMBIO 6: Leer Cookie en lugar de Header ---
+  const token = req.cookies.token; 
 
   if (!token) {
     return res.status(401).json({ error: 'Token no proporcionado' });

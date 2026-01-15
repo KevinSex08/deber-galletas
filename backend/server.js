@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser'); // ← NUEVO: Importar librería
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
@@ -7,8 +8,12 @@ const authRoutes = require('./routes/auth');
 const app = express();
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // ← MODIFICADO: Pon aquí la URL exacta de tu Frontend (Vite suele ser 5173)
+  credentials: true // ← NUEVO: Permite el intercambio de cookies
+}));
 app.use(express.json());
+app.use(cookieParser()); // ← NUEVO: Activar el middleware de cookies
 
 // Rutas
 app.use('/api/auth', authRoutes);
@@ -22,10 +27,11 @@ app.get('/api/protected', authenticateToken, (req, res) => {
   });
 });
 
-// Middleware de autenticación
+// Middleware de autenticación (MODIFICADO)
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  // ANTES: const authHeader = req.headers['authorization'];
+  // AHORA: Leemos el token desde la cookie
+  const token = req.cookies.token; 
 
   if (!token) {
     return res.status(401).json({ error: 'Token no proporcionado' });

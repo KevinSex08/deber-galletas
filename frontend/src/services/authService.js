@@ -1,4 +1,5 @@
-const API_URL = '/api/auth';
+// Asegúrate de que apunte a tu backend (puerto 3000)
+const API_URL = 'http://localhost:3000/api/auth'; 
 
 export const authService = {
   // Registrar nuevo usuario
@@ -6,6 +7,7 @@ export const authService = {
     const response = await fetch(`${API_URL}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // ← IMPORTANTE: Permite recibir la cookie
       body: JSON.stringify({ email, password, name })
     });
 
@@ -15,11 +17,7 @@ export const authService = {
     }
 
     const data = await response.json();
-    
-    // Guardar token en localStorage
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data.user));
-
+    // YA NO guardamos nada en localStorage
     return data;
   },
 
@@ -28,6 +26,7 @@ export const authService = {
     const response = await fetch(`${API_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // ← IMPORTANTE
       body: JSON.stringify({ email, password })
     });
 
@@ -37,44 +36,28 @@ export const authService = {
     }
 
     const data = await response.json();
-    
-    // Guardar token en localStorage
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data.user));
-
+    // YA NO guardamos nada en localStorage
     return data;
   },
 
   // Cerrar sesión
-  logout: () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  logout: async () => {
+    try {
+      await fetch(`${API_URL}/logout`, {
+        method: 'POST',
+        credentials: 'include' // ← Para borrar la cookie específica
+      });
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+    // Ya no es necesario borrar localStorage manualmente
   },
 
-  // Obtener usuario actual
-  getCurrentUser: () => {
-    const userStr = localStorage.getItem('user');
-    return userStr ? JSON.parse(userStr) : null;
-  },
-
-  // Obtener token
-  getToken: () => {
-    return localStorage.getItem('token');
-  },
-
-  // Verificar si está autenticado
-  isAuthenticated: () => {
-    return !!localStorage.getItem('token');
-  },
-
-  // Obtener perfil del servidor
+  // Obtener perfil del servidor (Reemplaza a getCurrentUser síncrono)
   getProfile: async () => {
-    const token = authService.getToken();
-    
     const response = await fetch(`${API_URL}/me`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      credentials: 'include' // ← Envía la cookie automáticamente
+      // Ya NO enviamos el header Authorization: Bearer
     });
 
     if (!response.ok) {
@@ -84,28 +67,30 @@ export const authService = {
     return response.json();
   },
 
-  // Hacer petición autenticada
+  // Wrapper para peticiones autenticadas
   fetchWithAuth: async (url, options = {}) => {
-    const token = authService.getToken();
-    
     const config = {
       ...options,
+      credentials: 'include', // ← Asegura que la cookie viaje
       headers: {
         ...options.headers,
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
+        // Eliminado Authorization: Bearer
       }
     };
 
     const response = await fetch(url, config);
     
     if (response.status === 401) {
-      // Token expirado o inválido
-      authService.logout();
+      // Si falla, intentamos logout y redirigir
+      await authService.logout();
       window.location.href = '/login';
       throw new Error('Sesión expirada');
     }
 
     return response;
   }
+  
+  // NOTA: Se eliminaron 'getToken', 'isAuthenticated' y 'getCurrentUser' 
+  // porque ya no podemos leer el token ni el usuario de localStorage síncronamente.
 };
